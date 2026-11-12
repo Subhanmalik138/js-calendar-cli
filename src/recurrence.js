@@ -113,12 +113,13 @@ function expand(event, from, to) {
     index++;
     if (out.length >= MAX_OCCURRENCES) break;
     if (occStart > toDate) break;
-    if (occStart < fromDate) continue;
+    const occEnd = new Date(occStart.getTime() + durationMs);
+    if (occEnd <= fromDate) continue; // ends before the window — keep looking
     out.push({
       eventId: event.id,
       title: event.title,
       start: occStart,
-      end: new Date(occStart.getTime() + durationMs),
+      end: occEnd,
       location: event.location,
       tags: event.tags || [],
       occurrenceIndex: index,

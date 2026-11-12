@@ -17,7 +17,8 @@
 const { Store } = require('./store');
 const { createEvent } = require('./events');
 const { parseWeekdays } = require('./recurrence');
-const { parseDateTime, formatDateTime, startOfDay, endOfDay } = require('./dates');
+const { findConflicts, findFreeSlots, formatOccurrence } = require('./conflicts');
+const { parseDateTime, formatDateTime, formatTime, startOfDay, endOfDay } = require('./dates');
 
 function parseFlags(argv) {
   const flags = {};
@@ -76,6 +77,16 @@ function cmdAdd(store, flags) {
     tags: splitTags(flags.tags),
     recurrence,
   });
+  if (!flags.force) {
+    const clashes = findConflicts(store.all(), event);
+    if (clashes.length) {
+      const lines = clashes.slice(0, 5).flatMap((c) => [
+        `  ${formatOccurrence(c.occurrence)}`,
+        ...c.conflictsWith.map((o) => `    conflicts with: ${formatOccurrence(o)}`),
+      ]);
+      throw new Error(`event conflicts with existing events:\n${lines.join('\n')}\nAdd --force to save it anyway.`);
+    }
+  }
   store.add(event);
   console.log(`Added ${event.id}`);
   printEvent(event);
@@ -122,16 +133,36 @@ function cmdDelete(store, positional) {
   return removed;
 }
 
+function cmdFree(store, flags, positional) {
+  const date = positional[0];
+  if (!date) throw new Error('usage: calcli free <YYYY-MM-DD> [--duration <minutes>] [--start HH:MM] [--end HH:MM]');
+  const slots = findFreeSlots(store.all(), date, {
+    dayStart: flags.start,
+    dayEnd: flags.end,
+    minMinutes: flags.duration ? Number(flags.duration) : 30,
+  });
+  if (slots.length === 0) {
+    console.log(`No free slots of ${flags.duration || 30}+ minutes on ${date}.`);
+    return [];
+  }
+  console.log(`Free slots on ${date}:`);
+  for (const s of slots) {
+    console.log(`  ${formatTime(s.start)} – ${formatTime(s.end)}  (${s.minutes} min)`);
+  }
+  return slots;
+}
+
 const HELP = `CalCLI — a CLI calendar and event planner
 
 Usage:
   calcli add --title <t> --start "YYYY-MM-DD HH:MM" --end "YYYY-MM-DD HH:MM"
              [--location <l>] [--notes <n>] [--tags a,b]
              [--recur daily|weekly|monthly] [--interval <n>] [--count <n>]
-             [--until YYYY-MM-DD] [--byday Mon,Wed,Fri]
+             [--until YYYY-MM-DD] [--byday Mon,Wed,Fri] [--force]
   calcli list [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--tag <tag>]
   calcli show <id>
   calcli delete <id>
+  calcli free <YYYY-MM-DD> [--duration <minutes>] [--start HH:MM] [--end HH:MM]
   calcli help
 
 Events are stored in ~/.calcli/events.json (override with CALCLI_DATA).
@@ -147,6 +178,7 @@ function main(argv) {
     case 'list': return cmdList(store, flags);
     case 'show': return cmdShow(store, positional);
     case 'delete': return cmdDelete(store, positional);
+    case 'free': return cmdFree(store, flags, positional);
     case 'help':
     case undefined:
       console.log(HELP);
