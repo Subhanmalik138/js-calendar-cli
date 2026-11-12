@@ -8,10 +8,12 @@
  *   calcli list [--from 2026-11-13] [--to 2026-11-20] [--tag work]
  *   calcli show <id>
  *   calcli delete <id>
+ *   calcli agenda | today | week | month [YYYY-MM]
+ *   calcli free 2026-11-13 --duration 60
+ *   calcli export --file calendar.ics
  *
- * Recurrence, conflicts, agenda views, search, stats and iCal support are
- * added in later stages; each command is a thin wrapper over src/*.js so
- * the logic stays testable without spawning the CLI.
+ * Each command is a thin wrapper over src/*.js so the logic stays
+ * testable without spawning the CLI.
  */
 
 const { Store } = require('./store');
