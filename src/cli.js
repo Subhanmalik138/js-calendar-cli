@@ -16,6 +16,7 @@
 
 const { Store } = require('./store');
 const { createEvent } = require('./events');
+const { parseWeekdays } = require('./recurrence');
 const { parseDateTime, formatDateTime, startOfDay, endOfDay } = require('./dates');
 
 function parseFlags(argv) {
@@ -56,6 +57,16 @@ function printEvent(event) {
 }
 
 function cmdAdd(store, flags) {
+  let recurrence;
+  if (flags.recur) {
+    recurrence = {
+      freq: flags.recur,
+      interval: flags.interval ? Number(flags.interval) : 1,
+      count: flags.count ? Number(flags.count) : undefined,
+      until: flags.until,
+      byDay: parseWeekdays(flags.byday),
+    };
+  }
   const event = createEvent({
     title: flags.title,
     start: flags.start,
@@ -63,6 +74,7 @@ function cmdAdd(store, flags) {
     location: flags.location,
     notes: flags.notes,
     tags: splitTags(flags.tags),
+    recurrence,
   });
   store.add(event);
   console.log(`Added ${event.id}`);
@@ -115,6 +127,8 @@ const HELP = `CalCLI — a CLI calendar and event planner
 Usage:
   calcli add --title <t> --start "YYYY-MM-DD HH:MM" --end "YYYY-MM-DD HH:MM"
              [--location <l>] [--notes <n>] [--tags a,b]
+             [--recur daily|weekly|monthly] [--interval <n>] [--count <n>]
+             [--until YYYY-MM-DD] [--byday Mon,Wed,Fri]
   calcli list [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--tag <tag>]
   calcli show <id>
   calcli delete <id>
