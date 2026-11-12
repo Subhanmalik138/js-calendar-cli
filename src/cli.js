@@ -18,7 +18,9 @@ const { Store } = require('./store');
 const { createEvent } = require('./events');
 const { parseWeekdays } = require('./recurrence');
 const { findConflicts, findFreeSlots, formatOccurrence } = require('./conflicts');
-const { parseDateTime, formatDateTime, formatTime, startOfDay, endOfDay } = require('./dates');
+const { agenda, formatAgendaDay, monthGrid, searchEvents } = require('./calendar');
+const { computeStats, upcoming } = require('./stats');
+const { parseDateTime, formatDateTime, formatTime, formatDate, startOfDay, endOfDay, addDays } = require('./dates');
 
 function parseFlags(argv) {
   const flags = {};
@@ -152,6 +154,91 @@ function cmdFree(store, flags, positional) {
   return slots;
 }
 
+function printAgenda(days) {
+  if (days.length === 0) {
+    console.log('Nothing scheduled.');
+    return days;
+  }
+  console.log(days.map(formatAgendaDay).join('\n\n'));
+  return days;
+}
+
+function cmdAgenda(store, flags) {
+  const from = flags.from ? parseDateTime(flags.from) : startOfDay(new Date());
+  const to = flags.to ? endOfDay(parseDateTime(flags.to)) : endOfDay(addDays(from, 6));
+  return printAgenda(agenda(store.all(), from, to));
+}
+
+function cmdToday(store) {
+  const today = startOfDay(new Date());
+  return printAgenda(agenda(store.all(), today, endOfDay(today)));
+}
+
+function cmdWeek(store) {
+  const today = startOfDay(new Date());
+  const monday = addDays(today, -((today.getDay() + 6) % 7)); // Monday of this week
+  return printAgenda(agenda(store.all(), monday, endOfDay(addDays(monday, 6))));
+}
+
+function cmdMonth(store, positional) {
+  const arg = positional[0];
+  let year;
+  let month;
+  if (arg) {
+    const m = /^(\d{4})-(\d{2})$/.exec(arg);
+    if (!m) throw new Error('usage: calcli month [YYYY-MM]');
+    year = +m[1];
+    month = +m[2] - 1;
+  } else {
+    const now = new Date();
+    year = now.getFullYear();
+    month = now.getMonth();
+  }
+  console.log(monthGrid(year, month, store.all()));
+  return null;
+}
+
+function cmdSearch(store, positional) {
+  const query = positional.join(' ');
+  if (!query) throw new Error('usage: calcli search <query>');
+  const hits = searchEvents(store.all(), query);
+  if (hits.length === 0) {
+    console.log(`No events matching "${query}".`);
+    return [];
+  }
+  hits.forEach(printEvent);
+  return hits;
+}
+
+function cmdStats(store, flags) {
+  const from = flags.from ? parseDateTime(flags.from) : startOfDay(addDays(new Date(), -29));
+  const to = flags.to ? endOfDay(parseDateTime(flags.to)) : endOfDay(new Date());
+  const s = computeStats(store.all(), from, to);
+  console.log(`Events stored: ${s.storedEvents}`);
+  console.log(`Occurrences ${formatDate(from)} – ${formatDate(to)}: ${s.occurrences}`);
+  console.log(`Total scheduled time: ${s.totalHours} hours`);
+  if (s.busiestDay) {
+    console.log(`Busiest day: ${s.busiestDay.date} (${s.busiestDay.count} events, ${Math.round(s.busiestDay.minutes / 60 * 10) / 10} hours)`);
+  }
+  if (Object.keys(s.hoursByTag).length) {
+    console.log('Hours by tag:');
+    for (const [tag, hours] of Object.entries(s.hoursByTag)) console.log(`  ${tag}: ${hours}h`);
+  }
+  return s;
+}
+
+function cmdUpcoming(store, flags) {
+  const hours = flags.hours ? Number(flags.hours) : 24;
+  const next = upcoming(store.all(), hours);
+  if (next.length === 0) {
+    console.log(`Nothing in the next ${hours} hours.`);
+    return [];
+  }
+  console.log(`Coming up in the next ${hours} hours:`);
+  for (const o of next) console.log(`  ${formatOccurrence(o)}`);
+  return next;
+}
+
 const HELP = `CalCLI — a CLI calendar and event planner
 
 Usage:
@@ -163,6 +250,11 @@ Usage:
   calcli show <id>
   calcli delete <id>
   calcli free <YYYY-MM-DD> [--duration <minutes>] [--start HH:MM] [--end HH:MM]
+  calcli agenda [--from YYYY-MM-DD] [--to YYYY-MM-DD]
+  calcli today | week | month [YYYY-MM]
+  calcli search <query>
+  calcli stats [--from YYYY-MM-DD] [--to YYYY-MM-DD]
+  calcli upcoming [--hours <n>]
   calcli help
 
 Events are stored in ~/.calcli/events.json (override with CALCLI_DATA).
@@ -179,6 +271,13 @@ function main(argv) {
     case 'show': return cmdShow(store, positional);
     case 'delete': return cmdDelete(store, positional);
     case 'free': return cmdFree(store, flags, positional);
+    case 'agenda': return cmdAgenda(store, flags);
+    case 'today': return cmdToday(store);
+    case 'week': return cmdWeek(store);
+    case 'month': return cmdMonth(store, positional);
+    case 'search': return cmdSearch(store, positional);
+    case 'stats': return cmdStats(store, flags);
+    case 'upcoming': return cmdUpcoming(store, flags);
     case 'help':
     case undefined:
       console.log(HELP);
