@@ -20,6 +20,8 @@ const { parseWeekdays } = require('./recurrence');
 const { findConflicts, findFreeSlots, formatOccurrence } = require('./conflicts');
 const { agenda, formatAgendaDay, monthGrid, searchEvents } = require('./calendar');
 const { computeStats, upcoming } = require('./stats');
+const { toIcs, parseIcs } = require('./ical');
+const fs = require('node:fs');
 const { parseDateTime, formatDateTime, formatTime, formatDate, startOfDay, endOfDay, addDays } = require('./dates');
 
 function parseFlags(argv) {
@@ -239,6 +241,26 @@ function cmdUpcoming(store, flags) {
   return next;
 }
 
+function cmdExport(store, flags) {
+  const ics = toIcs(store.all());
+  if (flags.file) {
+    fs.writeFileSync(flags.file, ics, 'utf8');
+    console.log(`Exported ${store.all().length} events to ${flags.file}`);
+  } else {
+    process.stdout.write(ics);
+  }
+  return ics;
+}
+
+function cmdImport(store, positional) {
+  const file = positional[0];
+  if (!file) throw new Error('usage: calcli import <file.ics>');
+  const events = parseIcs(fs.readFileSync(file, 'utf8'));
+  for (const event of events) store.add(event);
+  console.log(`Imported ${events.length} events from ${file}`);
+  return events;
+}
+
 const HELP = `CalCLI — a CLI calendar and event planner
 
 Usage:
@@ -255,6 +277,8 @@ Usage:
   calcli search <query>
   calcli stats [--from YYYY-MM-DD] [--to YYYY-MM-DD]
   calcli upcoming [--hours <n>]
+  calcli export [--file out.ics]
+  calcli import <file.ics>
   calcli help
 
 Events are stored in ~/.calcli/events.json (override with CALCLI_DATA).
@@ -278,6 +302,8 @@ function main(argv) {
     case 'search': return cmdSearch(store, positional);
     case 'stats': return cmdStats(store, flags);
     case 'upcoming': return cmdUpcoming(store, flags);
+    case 'export': return cmdExport(store, flags);
+    case 'import': return cmdImport(store, positional);
     case 'help':
     case undefined:
       console.log(HELP);
